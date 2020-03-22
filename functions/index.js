@@ -5,6 +5,7 @@ const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const async = require('async');
 
 const authkey = process.env.AUTH_KEY;
 
@@ -38,19 +39,17 @@ app.post('/message', async (req, res) => {
 
                     let query = requests.where('request', '==', req.body.message.text)
                         .get()
-                        .then(snapshot => {
+                        .then(async snapshot => {
                             if (snapshot.empty) {
                                 console.log('No matching responses');
                                 return res.status(400).send('Bad Message Request');
                             }
 
-                            snapshot.forEach(response => {
-
-                                if (response.data().buttons)
-                                    SendMessage(id, response.data().response, response.data().buttons)
+                            snapshot.forEach(async doc => {
+                                if (doc.data().buttons)
+                                    await SendMessage(id, doc.data().response, doc.data().buttons)
                                 else
-                                    SendMessagePlain(id, response.data().response)
-
+                                    SendMessagePlain(id, doc.data().response)
                             });
 
                             return true;
@@ -91,7 +90,7 @@ app.post('/message', async (req, res) => {
 
 async function GenerateButtons(receiver, msg, buttonslist) {
 
-    return new Promise(((resolve, reject) => {
+    return new Promise((async (resolve, reject) => {
         const obj = {
             receiver: receiver,
             sender: {
@@ -109,12 +108,12 @@ async function GenerateButtons(receiver, msg, buttonslist) {
 
         if (buttonslist.length > 0) {
 
-            for (const btn of buttonslist) {
-                kb.Buttons.push(CreateButton(btn));
-            }
+            await async.each(buttonslist, async btn => {
+                let createdBtn = await CreateButton(btn);
+                kb.Buttons.push(createdBtn)
+            });
 
             obj.keyboard = kb;
-            console.log(obj);
             resolve(obj);
         }
 
@@ -125,43 +124,41 @@ async function GenerateButtons(receiver, msg, buttonslist) {
 
 async function CreateButton(btn){
     let btn_requests = db.collection('buttons');
-    console.log(btn);
 
-    let btn_query = await btn_requests.where('ActionBody', '==', btn)
-        .get()
-        .then(snapshot => {
-            // eslint-disable-next-line promise/always-return
-            if (snapshot.empty) {
-                console.log('No matching Buttons');
-                return null;
+    let snapshot = await btn_requests.where('ActionBody', '==', btn).get();
+
+    if (snapshot.empty) {
+        console.log('No matching Buttons');
+        return null;
+    }
+
+    let btnArr = await getBtnFromSnapshot(snapshot);
+
+    return btnArr[0];
+}
+
+async function getBtnFromSnapshot(snapshot) {
+    return new Promise(((resolve, reject) => {
+        let returnArr = []
+        snapshot.forEach(btnres => {
+            var tempbtn = {
+                ActionBody: btnres.data().ActionBody,
+                Text: btnres.data().Text,
+                Columns: 6,
+                Rows: 1,
+                BgColor: "#eeeeee",
+                BgLoop: true,
+                ActionType: "reply",
+                TextVAlign: "middle",
+                TextHAlign: "center",
+                TextSize: "large"
             }
 
-            snapshot.forEach(btnres => {
-
-                var tempbtn = {
-                    ActionBody: btnres.data().ActionBody,
-                    Text: btnres.data().Text,
-                    Columns: 6,
-                    Rows: 1,
-                    BgColor: "#eeeeee",
-                    BgLoop: true,
-                    ActionType: "reply",
-                    TextVAlign: "middle",
-                    TextHAlign: "center",
-                    TextSize: "large"
-                }
-
-                console.log("Pushing button " + tempbtn.Text);
-                //kb.Buttons.push(tempbtn);
-                return tempbtn;
-
-            });
-
-
-        }).catch(err => {
-            console.log(err);
-            return null;
+            console.log("Pushing button " + tempbtn.Text);
+            returnArr.push(tempbtn);
         });
+        resolve(returnArr)
+    }))
 }
 
 /** 
@@ -244,7 +241,7 @@ async function SendMessage(receiver, msg, buttonslist) {
 
     var object = await GenerateButtons(receiver, msg, buttonslist);
 
-    console.log("Object Sent");
+    console.log("Object Sent", object);
 
     await axios.post('https://chatapi.viber.com/pa/send_message', object, {
         headers: {
