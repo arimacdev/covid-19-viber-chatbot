@@ -1,8 +1,12 @@
+require('dotenv').config();
+
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+
+const authkey = process.env.AUTH_KEY;
 
 var serviceAccount = require("./account-permissions.json");
 
@@ -245,7 +249,7 @@ async function SendMessage(receiver, msg, buttonslist) {
     await axios.post('https://chatapi.viber.com/pa/send_message', object, {
         headers: {
             'Content-Type': 'application/json',
-            'X-Viber-Auth-Token': '4b3f27110ce7df22-2896ab4b6b075162-6b404e3f1816f78f'
+            'X-Viber-Auth-Token': authkey
         }
     });
 }
@@ -265,7 +269,7 @@ async function SendMessagePlain(receiver, msg) {
     await axios.post('https://chatapi.viber.com/pa/send_message', obj, {
         headers: {
             'Content-Type': 'application/json',
-            'X-Viber-Auth-Token': '4b3f27110ce7df22-2896ab4b6b075162-6b404e3f1816f78f'
+            'X-Viber-Auth-Token': authkey
         }
     });
 }
