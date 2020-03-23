@@ -25,14 +25,23 @@ app.use(cors({ origin: true }));
 
 app.post('/message', async (req, res) => {
 
+    console.info('Message :' + JSON.stringify(req.body));
+
     try {
 
+
+
+
         if (req.body.event === "message") {
-            console.log("Message");
 
             const id = req.body.sender.id;
             if (id) {
-                console.info('Message :' + JSON.stringify(req.body.message.text));
+                console.info('Message :' + JSON.stringify(req.body));
+
+                //Statistics
+                if (req.body.message.text === "1_en_1" || req.body.message.text === "1_si_1" || req.body.message.text === "1_ta_1") {
+                    await CheckLKStats(id);
+                }
 
                 try {
                     let requests = db.collection('responses');
@@ -41,8 +50,11 @@ app.post('/message', async (req, res) => {
                         .get()
                         .then(async snapshot => {
                             if (snapshot.empty) {
-                                console.log('No matching responses');
-                                return res.status(400).send('Bad Message Request');
+                                //console.log('No matching responses');
+
+                                SendDefault(id);
+
+                                return false;
                             }
 
                             snapshot.forEach(async doc => {
@@ -72,6 +84,50 @@ app.post('/message', async (req, res) => {
                 return res.status(400).send('Bad Message Request');
             }
 
+        } else if (req.body.event === "conversation_started") {
+
+            const uid = req.body.user.id;
+
+            if (uid) {
+                try {
+                    let requests = db.collection('responses');
+
+                    let query = requests.where('request', '==', "action_start")
+                        .get()
+                        .then(async snapshot => {
+                            if (snapshot.empty) {
+
+                                SendDefault(uid);
+
+                                //console.log('No matching responses');
+                                return res.status(400).send('Bad Message Request');
+                            }
+
+                            snapshot.forEach(async doc => {
+                                if (doc.data().buttons)
+                                    await SendMessage(uid, doc.data().response, doc.data().buttons)
+                                else
+                                    SendMessagePlain(uid, doc.data().response)
+                            });
+
+                            return true;
+                        }).catch(err => {
+                            console.log(err);
+                            return false;
+                        });
+
+                    return res.status(200).send('Success');
+
+
+                } catch (error) {
+                    return res.status(400).send('Bad Message Request');
+                }
+                //search responses for the request
+            }
+            else {
+                return res.status(400).send('Bad Message Request');
+            }
+
         } else {
             return res.status(400).send('Bad Message Request');
         }
@@ -81,7 +137,7 @@ app.post('/message', async (req, res) => {
     }
     catch (error) {
         console.log(error);
-        return res.status(400).send('error');
+        return res.status(400).send('Bad Request');
     }
 
 
@@ -94,7 +150,7 @@ async function GenerateButtons(receiver, msg, buttonslist) {
         const obj = {
             receiver: receiver,
             sender: {
-                name: "BOT"
+                name: process.env.BOT_NAME
             },
             type: "text",
             text: msg
@@ -102,7 +158,9 @@ async function GenerateButtons(receiver, msg, buttonslist) {
 
         const kb = {
             Type: "keyboard",
+            DefaultHeight: true,
             BgColor: "#FFFFFF",
+            InputFieldState: "hidden",
             Buttons: []
         }
 
@@ -122,13 +180,13 @@ async function GenerateButtons(receiver, msg, buttonslist) {
 }
 
 
-async function CreateButton(btn){
+async function CreateButton(btn) {
     let btn_requests = db.collection('buttons');
 
     let snapshot = await btn_requests.where('ActionBody', '==', btn).get();
 
     if (snapshot.empty) {
-        console.log('No matching Buttons');
+        //console.log('No matching Buttons');
         return null;
     }
 
@@ -154,94 +212,19 @@ async function getBtnFromSnapshot(snapshot) {
                 TextSize: "large"
             }
 
-            console.log("Pushing button " + tempbtn.Text);
+            //console.log("Pushing button " + tempbtn.Text);
             returnArr.push(tempbtn);
         });
         resolve(returnArr)
     }))
 }
 
-/** 
- * 
- * async function SendMessage(receiver, msg, buttonslist) {
-    const obj = {
-        receiver: receiver,
-        sender: {
-            name: "BOT"
-        },
-        type: "text",
-        text: msg
-    };
-
-    const kb = {
-        Type: "keyboard",
-        BgColor: "#FFFFFF",
-        Buttons: []
-    }
-
-    if (buttonslist.length > 0) {
-        buttonslist.forEach(btn => {
-
-            //call the DB again and get the values
-            let btn_requests = db.collection('buttons');
-
-            let btn_query = btn_requests.where('ActionBody', '==', btn)
-                .get()
-                .then(snapshot => {
-                    // eslint-disable-next-line promise/always-return
-                    if (snapshot.empty) {
-                        console.log('No matching Buttons');
-                    }
-
-                    snapshot.forEach(btnres => {
-
-                        var tempbtn = {
-                            ActionBody: btnres.data().ActionBody,
-                            Text: btnres.data().Text,
-                            Columns: 6,
-                            Rows: 1,
-                            BgColor: "#eeeeee",
-                            BgLoop: true,
-                            ActionType: "reply",
-                            TextVAlign: "middle",
-                            TextHAlign: "center",
-                            TextSize: "large"
-                        }
-
-                        console.log("Pushing button " + tempbtn);
-                        kb.Buttons.push(tempbtn);
-
-                    });
-
-
-                }).catch(err => {
-                    console.log(err);
-                });
-
-        });
-
-        obj.keyboard = kb;
-
-        console.log(obj);
-    }
-
-    console.log("Hello there!");
-
-    await axios.post('https://chatapi.viber.com/pa/send_message', obj, {
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Viber-Auth-Token': '4b3f27110ce7df22-2896ab4b6b075162-6b404e3f1816f78f'
-        }
-    });
-}
- * 
-*/
 
 async function SendMessage(receiver, msg, buttonslist) {
 
     var object = await GenerateButtons(receiver, msg, buttonslist);
 
-    console.log("Object Sent", object);
+    //console.log("Object Sent", object);
 
     await axios.post('https://chatapi.viber.com/pa/send_message', object, {
         headers: {
@@ -256,7 +239,7 @@ async function SendMessagePlain(receiver, msg) {
     const obj = {
         receiver: receiver,
         sender: {
-            name: "BOT"
+            name: process.env.BOT_NAME
         },
         type: "text",
         text: msg
@@ -268,6 +251,81 @@ async function SendMessagePlain(receiver, msg) {
             'Content-Type': 'application/json',
             'X-Viber-Auth-Token': authkey
         }
+    });
+}
+
+function SendDefault(id) {
+    try {
+        let requests = db.collection('responses');
+
+        let query = requests.where('request', '==', "action_default")
+            .get()
+            .then(async snapshot => {
+                if (snapshot.empty) {
+                    console.log('No matching responses');
+                    return false
+                }
+
+                snapshot.forEach(async doc => {
+                    if (doc.data().buttons)
+                        await SendMessage(id, doc.data().response, doc.data().buttons)
+                    else
+                        SendMessagePlain(id, doc.data().response)
+                });
+
+                return true;
+            }).catch(err => {
+                console.log(err);
+                return false;
+            });
+
+    } catch (error) {
+        return false;
+    }
+}
+
+async function CheckLKStats(receiver, lan) {
+    console.log("Checking LK Stats");
+
+    const dataObj = {
+        total: 0,
+        new: 0,
+        treatment: 0,
+        recovered: 0,
+        deaths: 0
+    }
+
+    var msg = "";
+
+    await axios.get('https://www.hpb.health.gov.lk/api/get-current-statistical').then(api_response => {
+        // eslint-disable-next-line promise/always-return
+        if (api_response.data.success) {
+
+            console.log(api_response.data.data.local_total_cases);
+
+            dataObj.total = api_response.data.data.local_total_cases;
+            dataObj.new = api_response.data.data.local_new_cases;
+            dataObj.treatment = api_response.data.data.local_total_number_of_individuals_in_hospitals;
+            dataObj.recovered = api_response.data.data.local_recovered;
+            dataObj.deaths = api_response.data.data.local_deaths;
+
+            msg = "😷 Total Cases : "+ dataObj.total 
+            +" \n🤒 New Cases today : "+dataObj.new 
+            +" \n🏥 Treating in Hospitals : "+dataObj.treatment 
+            +" \n💚 Recovered and Discharged : "+dataObj.recovered 
+            +" \n😢 Deaths : " + dataObj.deaths;
+
+            SendMessagePlain(receiver, msg);
+
+        } else {
+            if (lan === "1_si_1")
+                msg = "සමාවන්න. මට දත්ත ලබාගැනීමේ ගැටළුවක් ඇතිවිය. නැවත උත්සාහ කරන්න.";
+            else if (lan === "1_ta_1")
+                msg = "Tamil Sorry, I am unable to look for info";
+            else
+                msg = "Sorry, I am unable to look for info. Please try again";
+        }
+
     });
 }
 
