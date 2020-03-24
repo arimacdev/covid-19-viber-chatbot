@@ -18,7 +18,6 @@ admin.initializeApp({
 
 
 const app = express();
-
 const db = admin.firestore();
 
 app.use(cors({ origin: true }));
@@ -29,9 +28,6 @@ app.post('/message', async (req, res) => {
 
     try {
 
-
-
-
         if (req.body.event === "message") {
 
             const id = req.body.sender.id;
@@ -40,7 +36,7 @@ app.post('/message', async (req, res) => {
 
                 //Statistics
                 if (req.body.message.text === "1_en_1" || req.body.message.text === "1_si_1" || req.body.message.text === "1_ta_1") {
-                    await CheckLKStats(id);
+                    await CheckLKStats(id, req.body.message.text);
                 }
 
                 try {
@@ -89,40 +85,58 @@ app.post('/message', async (req, res) => {
             const uid = req.body.user.id;
 
             if (uid) {
-                try {
-                    let requests = db.collection('responses');
+                const obj = {
+                    receiver: uid,
+                    sender: {
+                        name: process.env.BOT_NAME
+                    },
+                    type: "text",
+                    text: "Welcome to COVID-19 Sri Lanka Chatbot. Be with us to get recent and valid information on the Coronavirus epidemic.\n\nPlease Choose a language below to start 👇🏽👇🏽",
+                    keyboard : {
+                        Type: "keyboard",
+                        DefaultHeight: true,
+                        BgColor: "#FFFFFF",
+                        InputFieldState: "hidden",
+                        Buttons: [{
+                            ActionBody: "lang_en",
+                            Text: "English",
+                            Columns: 6,
+                            Rows: 1,
+                            BgColor: "#eeeeee",
+                            BgLoop: true,
+                            ActionType: "reply",
+                            TextVAlign: "middle",
+                            TextHAlign: "center",
+                            TextSize: "large"
+                        },{
+                            ActionBody: "lang_si",
+                            Text: "සිංහල",
+                            Columns: 6,
+                            Rows: 1,
+                            BgColor: "#eeeeee",
+                            BgLoop: true,
+                            ActionType: "reply",
+                            TextVAlign: "middle",
+                            TextHAlign: "center",
+                            TextSize: "large"
+                        },{
+                            ActionBody: "lang_ta",
+                            Text: "தமிழ்",
+                            Columns: 6,
+                            Rows: 1,
+                            BgColor: "#eeeeee",
+                            BgLoop: true,
+                            ActionType: "reply",
+                            TextVAlign: "middle",
+                            TextHAlign: "center",
+                            TextSize: "large"
+                        }]
+                    }
+                };
 
-                    let query = requests.where('request', '==', "action_start")
-                        .get()
-                        .then(async snapshot => {
-                            if (snapshot.empty) {
+                SendOject(uid, obj);
+                return res.status(200).send('Conversation Started Success');
 
-                                SendDefault(uid);
-
-                                //console.log('No matching responses');
-                                return res.status(400).send('Bad Message Request');
-                            }
-
-                            snapshot.forEach(async doc => {
-                                if (doc.data().buttons)
-                                    await SendMessage(uid, doc.data().response, doc.data().buttons)
-                                else
-                                    SendMessagePlain(uid, doc.data().response)
-                            });
-
-                            return true;
-                        }).catch(err => {
-                            console.log(err);
-                            return false;
-                        });
-
-                    return res.status(200).send('Success');
-
-
-                } catch (error) {
-                    return res.status(400).send('Bad Message Request');
-                }
-                //search responses for the request
             }
             else {
                 return res.status(400).send('Bad Message Request');
@@ -171,6 +185,9 @@ async function GenerateButtons(receiver, msg, buttonslist) {
                 kb.Buttons.push(createdBtn)
             });
 
+            //sort the buttons by ActionBody
+            kb.Buttons.sort((a,b)=> (a.ActionBody>b.ActionBody) ? 1 : -1);
+
             obj.keyboard = kb;
             resolve(obj);
         }
@@ -212,7 +229,6 @@ async function getBtnFromSnapshot(snapshot) {
                 TextSize: "large"
             }
 
-            //console.log("Pushing button " + tempbtn.Text);
             returnArr.push(tempbtn);
         });
         resolve(returnArr)
@@ -221,10 +237,7 @@ async function getBtnFromSnapshot(snapshot) {
 
 
 async function SendMessage(receiver, msg, buttonslist) {
-
     var object = await GenerateButtons(receiver, msg, buttonslist);
-
-    //console.log("Object Sent", object);
 
     await axios.post('https://chatapi.viber.com/pa/send_message', object, {
         headers: {
@@ -254,34 +267,67 @@ async function SendMessagePlain(receiver, msg) {
     });
 }
 
+async function SendOject(obj) {
+
+    await axios.post('https://chatapi.viber.com/pa/send_message', obj, {
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Viber-Auth-Token': authkey
+        }
+    });
+}
+
 function SendDefault(id) {
-    try {
-        let requests = db.collection('responses');
+    const obj = {
+        receiver: id,
+        sender: {
+            name: process.env.BOT_NAME
+        },
+        type: "text",
+        text: "Hi, I am sorry I cannot understand what you said.\n\nPlease choose your language 👇",
+        keyboard : {
+            Type: "keyboard",
+            DefaultHeight: true,
+            BgColor: "#FFFFFF",
+            InputFieldState: "hidden",
+            Buttons: [{
+                ActionBody: "lang_en",
+                Text: "English",
+                Columns: 6,
+                Rows: 1,
+                BgColor: "#eeeeee",
+                BgLoop: true,
+                ActionType: "reply",
+                TextVAlign: "middle",
+                TextHAlign: "center",
+                TextSize: "large"
+            },{
+                ActionBody: "lang_si",
+                Text: "සිංහල",
+                Columns: 6,
+                Rows: 1,
+                BgColor: "#eeeeee",
+                BgLoop: true,
+                ActionType: "reply",
+                TextVAlign: "middle",
+                TextHAlign: "center",
+                TextSize: "large"
+            },{
+                ActionBody: "lang_ta",
+                Text: "தமிழ்",
+                Columns: 6,
+                Rows: 1,
+                BgColor: "#eeeeee",
+                BgLoop: true,
+                ActionType: "reply",
+                TextVAlign: "middle",
+                TextHAlign: "center",
+                TextSize: "large"
+            }]
+        }
+    };
 
-        let query = requests.where('request', '==', "action_default")
-            .get()
-            .then(async snapshot => {
-                if (snapshot.empty) {
-                    console.log('No matching responses');
-                    return false
-                }
-
-                snapshot.forEach(async doc => {
-                    if (doc.data().buttons)
-                        await SendMessage(id, doc.data().response, doc.data().buttons)
-                    else
-                        SendMessagePlain(id, doc.data().response)
-                });
-
-                return true;
-            }).catch(err => {
-                console.log(err);
-                return false;
-            });
-
-    } catch (error) {
-        return false;
-    }
+    SendOject(obj);
 }
 
 async function CheckLKStats(receiver, lan) {
@@ -309,12 +355,26 @@ async function CheckLKStats(receiver, lan) {
             dataObj.recovered = api_response.data.data.local_recovered;
             dataObj.deaths = api_response.data.data.local_deaths;
 
-            msg = "😷 Total Cases : "+ dataObj.total 
-            +" \n🤒 New Cases today : "+dataObj.new 
-            +" \n🏥 Treating in Hospitals : "+dataObj.treatment 
-            +" \n💚 Recovered and Discharged : "+dataObj.recovered 
-            +" \n😢 Deaths : " + dataObj.deaths;
+            if (lan === "1_si_1")
+                msg = "😷 මුළු රෝගීන් : " + dataObj.total
+                    + " \n\n🤒 නව රෝගීන් : " + dataObj.new
+                    + " \n\n🏥 රෝහල් ගත : " + dataObj.treatment
+                    + " \n\n💚 සුවය ලබා පිටව ගිය : " + dataObj.recovered
+                    + " \n\n😢 මරණ සංඛ්‍යාව : " + dataObj.deaths;
+            else if (lan === "1_ta_1")
+                msg = "😷 மொத்த நோயாளிகள் : " + dataObj.total
+                    + " \n\n🤒 புதிய நோயாளிகள் : " + dataObj.new
+                    + " \n\n🏥 மருத்துவமனைகளில் உள்ள மொத்த நபர்களின் எண்ணிக்கை : " + dataObj.treatment
+                    + " \n\n💚 தேறியோர் மற்றும் குணமடைந்து வெளியேறியோர் : " + dataObj.recovered
+                    + " \n\n😢 இறப்புக்கள் : " + dataObj.deaths;
+            else
+                msg = "😷 Total Cases : " + dataObj.total
+                    + " \n\n🤒 New Cases today : " + dataObj.new
+                    + " \n\n🏥 Treating in Hospitals : " + dataObj.treatment
+                    + " \n\n💚 Recovered and Discharged : " + dataObj.recovered
+                    + " \n\n😢 Deaths : " + dataObj.deaths;
 
+            
             SendMessagePlain(receiver, msg);
 
         } else {
